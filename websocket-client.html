@@ -1,0 +1,43 @@
+<html>
+
+<head>
+	<title>WEBSOCKET TEST</title>
+	<script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+	    crossorigin="anonymous"></script>
+</head>
+
+<body>
+	<script>
+		$(function () {
+			// if user is running mozilla then use it's built-in WebSocket
+			window.WebSocket = window.WebSocket || window.MozWebSocket;
+
+			var connection = new WebSocket('ws://127.0.0.1:3001');
+
+			connection.onopen = function () {
+				connection.send(JSON.stringify({
+					type: "register",
+					filename: "fib.c"
+				}));
+			};
+
+			connection.onerror = function (error) {
+
+			};
+
+			connection.onmessage = function (message) {
+				// console.log(message);
+				try {
+					var json = JSON.parse(message.data);
+					console.log(json);
+				} catch (e) {
+					console.log('This doesn\'t look like a valid JSON: ',
+						message.data);
+					return;
+				}
+			};
+		});
+	</script>
+</body>
+
+</html>
