@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <dirent.h>
+#include <sys/resource.h>
 
 #define delay_in_seconds 1
 
@@ -23,6 +24,7 @@ int fd;
 struct addrinfo *res = 0;
 char buffer[10000];
 FILE *fptr;
+struct rusage r_usage;
 
 void run_coverage()
 {
@@ -112,6 +114,11 @@ void *probe_thread2(void *vargp)
 	}
 }
 
+void readResourceStats() {
+	getrusage(RUSAGE_SELF,&r_usage);
+	sprintf(buffer+20, "%ld\n", r_usage.ru_maxrss);
+}
+
 void *probe_thread(void *vargp)
 {
 	char *gcda_filename;
@@ -126,29 +133,30 @@ void *probe_thread(void *vargp)
 		buffer[strlen(gcda_filename)] = '\n';
 	}
 	setup_udp();
-
+	
 	while (1)
 	{
 		start = clock();
 		run_coverage();
+		readResourceStats();
 		fptr = fopen(gcda_filename, "r");
 		if (fptr == NULL)
 		{
 			printf("Cannot open file \n");
 			exit(0);
 		}
-		size = fread(buffer + 20, sizeof(buffer) -  20, 1, fptr);
+		size = fread(buffer + 40, sizeof(buffer) -  40, 1, fptr);
 		fseek(fptr, 0L, SEEK_END);
 		size = ftell(fptr);
 		// printf("%s\n", buffer);
-		if (sendto(fd, buffer, size + 20, 0, res->ai_addr, res->ai_addrlen) == -1)
+		if (sendto(fd, buffer, size + 40, 0, res->ai_addr, res->ai_addrlen) == -1)
 		{
 			fprintf(stderr, "%s", strerror(errno));
 		}
 		fclose(fptr);
 		stop = clock();
 		// printf("signal time : %6.3f\n", (double)(stop - start) * 1000000 / CLOCKS_PER_SEC);
-		usleep(1000000);
+		usleep(50000);
 	}
 }
 
