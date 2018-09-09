@@ -1,0 +1,17 @@
+#!/bin/bash
+
+if [ ! -d "/hda" ]; then
+  echo "File system no present";
+  exit;
+fi
+
+python /hda/pre-compile.py $@
+
+# python compile-helper.py $@
+#arm-linux-gnueabi-gcc \
+gcc \
+-fprofile-arcs \
+-ftest-coverage \
+-Wall \
+$@ \
+-lpthread
