@@ -28,6 +28,7 @@ function getProgress(stdout) {
 	files = stdout.toString().match(/'(\w+\.)+(c|h)'/g).map(function(f) {return f.replace(/'/g, "")});
 	percent = stdout.toString().match(/\d+\.\d+% of \d+/g);
 	var ret = {}
+	if(!percent)return ret;
 	for(var i=0;i<files.length;i++) {
 		ret[files[i]] = {
 			percent: parseFloat(percent[i].substring(0,percent[i].indexOf("%"))),
