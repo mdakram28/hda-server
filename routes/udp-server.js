@@ -24,6 +24,20 @@ function getSourceFolder(sources, fileName) {
 	}
 }
 
+function getProgress(stdout) {
+	files = stdout.toString().match(/'(\w+\.)+(c|h)'/g).map(function(f) {return f.replace(/'/g, "")});
+	percent = stdout.toString().match(/\d+\.\d+% of \d+/g);
+	var ret = {}
+	for(var i=0;i<files.length;i++) {
+		ret[files[i]] = {
+			percent: parseFloat(percent[i].substring(0,percent[i].indexOf("%"))),
+			total: parseFloat(percent[i].substring(percent[i].indexOf("of ")+3)),
+		}
+	}
+	// console.log(ret);
+	return ret;
+}
+
 module.exports = function (onReceiveFile, store) {
 
 	var server = udp.createSocket('udp4');
@@ -34,12 +48,19 @@ module.exports = function (onReceiveFile, store) {
 		server.close();
 	});
 	var i = 0;
+	// var memBuf = new Buffer();
 	// emits on new datagram msg
 	server.on('message', function (msg, info) {
-		var fileName = msg.toString().split("\n")[0];
-		var file = new Buffer(msg.length - 20);
-		msg.copy(file, 0, 20);
+		var tokens = msg.toString().split("\n");
+		// console.log(tokens);
+		var fileName = tokens[0];
+		var file = new Buffer(msg.length - 40);
+		msg.copy(file, 0, 40);
 		var sourceDir = getSourceFolder(store.sources, fileName);
+		console.log(sourceDir);
+		var timeReceived = new Date().getTime();
+		// console.log(msg.toString().substring(20, 50));
+		var memoryUsage = parseInt(msg.toString().substring(20).split("\n")[0]);
 		// console.log(sourceDir);
 		// console.log("File size: "+file.length +"/"+msg.length);
 		// console.log(JSON.stringify(fileName));
@@ -59,7 +80,12 @@ module.exports = function (onReceiveFile, store) {
 				if (err) console.log(err);
 				else {
 					sourceFiles[fileName] = parser.parse_coverage(data.toString());
+					sourceFiles[fileName].time = timeReceived;
+					sourceFiles[fileName].memory = memoryUsage;
+					sourceFiles[fileName].progress = getProgress(stdout);
 					onReceiveFile(sourceDir.file, sourceFiles[fileName]);
+					store.timeline[sourceDir.file] = store.timeline[sourceDir.file] || {};
+					store.timeline[sourceDir.file][timeReceived] = sourceFiles[fileName];
 				}
 			});
 		});

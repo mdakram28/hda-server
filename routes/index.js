@@ -2,7 +2,10 @@ var express = require('express');
 var router = express.Router();
 var fs = require("fs");
 
-var store = {};
+var store = {
+	sources: {},
+	timeline: {}
+};
 
 store.sources = require("/hda/sources.json");
 fs.watchFile('/hda/sources.json', (curr, prev) => {
@@ -31,6 +34,9 @@ router.get("/files", function(req,res) {
 	res.json(store.sources[source]);
 });
 
-router.get('')
+router.get("/timeline", function(req,res) {
+	var file = req.query.file;
+	return res.json(store.timeline[file]);
+});
 
 module.exports = router;
