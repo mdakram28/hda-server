@@ -4,8 +4,7 @@ import json
 from pprint import pprint
 
 args = sys.argv[1:]
-del args[args.index('-o')+1]
-del args[args.index('-o')]
+args = args[:args.index('-o')]
 
 print(args, os.getcwd())
 

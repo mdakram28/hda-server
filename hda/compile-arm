@@ -8,10 +8,11 @@ fi
 python /hda/pre-compile.py $@
 
 # python compile-helper.py $@
-#arm-linux-gnueabi-gcc \
-gcc \
+arm-linux-gnueabi-gcc \
 -fprofile-arcs \
 -ftest-coverage \
 -Wall \
 $@ \
 -lpthread
+
+python /hda/post-compile.py $@
