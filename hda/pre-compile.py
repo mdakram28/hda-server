@@ -3,18 +3,31 @@ import os
 import json
 from pprint import pprint
 
-args = sys.argv[1:]
-args = args[:args.index('-o')]
+script_path = (os.path.dirname(os.path.realpath(__file__)))
+source_path = os.getcwd()
 
-print(args, os.getcwd())
+args = sys.argv[1:]
+
+if len(args) == 0:
+	print("Empty arguments supplied")
+	exit(1)
+
+args = " ".join(args)
+args = args[:args.index(' -')].split()
 
 data = {}
 try:
-	with open('/hda/sources.json') as f:
+	with open(script_path+'/sources.json') as f:
 		data = json.load(f)
-		data[os.getcwd()] = args
-except:
+		print(data)
+		if source_path in data:
+			args = [arg for arg in args if (arg not in data[source_path])]
+			data[source_path].extend(args)
+		else:
+			data[source_path] = args
+except err:
+	print("Error reading sources.json")
 	data[os.getcwd()] = args
 
-with open('/hda/sources.json', 'w+') as outfile:
+with open(script_path+'/sources.json', 'w+') as outfile:
 	json.dump(data, outfile)

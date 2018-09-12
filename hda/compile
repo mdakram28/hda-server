@@ -1,17 +1,30 @@
 #!/bin/bash
 
-if [ ! -d "/hda" ]; then
-  echo "File system no present";
-  exit;
+SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
+python $SCRIPTPATH/pre-compile.py $@
+
+HOST_PRESENT=false
+
+for arg in $@; do
+	if [[ $arg = "-DHOST"* ]]; then
+		HOST_PRESENT=true
+	fi
+done
+
+EXTRA_ARGS=()
+
+if [ "$HOST_PRESENT" = false ]; then
+	echo "USING DEFAULT HOST 127.0.0.1"
+	EXTRA_ARGS=(-DHOST='"127.0.0.1"')
 fi
 
-python /hda/pre-compile.py $@
-
-# python compile-helper.py $@
-#arm-linux-gnueabi-gcc \
 gcc \
 -fprofile-arcs \
 -ftest-coverage \
 -Wall \
+-I$SCRIPTPATH \
+$EXTRA_ARGS \
 $@ \
 -lpthread
+
+python $SCRIPTPATH/post-compile.py $@

@@ -1,61 +1,108 @@
-var WebSocketServer = require('websocket').server;
-var http = require('http');
+var WebSocketServer = require("websocket").server;
+var http = require("http");
 
-var server = http.createServer(function (request, response) {});
-server.listen(3001, function () {});
+var server = http.createServer(function(request, response) {});
+server.listen(3001, function() {});
 
 wsServer = new WebSocketServer({
-	httpServer: server
+    httpServer: server
 });
 
 var fileListeners = {};
 
-function onRegister(connection, data) {
-	fileListeners[data.filename] = fileListeners[data.filename] || [];
-	if(fileListeners[data.filename].indexOf(connection) == -1) {
-		fileListeners[data.filename] = [connection];
-		console.log("Registered");
-	}
-}
+var files = {};
+var processListeners = [];
 
 function removeAll(connection) {
-	for(var filename in fileListeners) {
-		// console.log(fileListeners[filename]);
-		fileListeners[filename] = fileListeners[filename].filter(function(connection2) {
-			return connection !== connection2;
-		});
-	}
+    for (var filename in fileListeners) {
+        // console.log(fileListeners[filename]);
+        fileListeners[filename] = fileListeners[filename].filter(function(
+            connection2
+        ) {
+            return connection !== connection2;
+        });
+    }
 }
 
-wsServer.on('request', function (request) {
-	var connection = request.accept(null, request.origin);
+function sendProcessList() {
+    processListeners.forEach(function(connection) {
+        connection.send(JSON.stringify(files));
+    });
+}
 
-	connection.on('message', function (message) {
-		if (message.type === 'utf8') {
-			var json = JSON.parse(message.utf8Data);
-			// console.log(json);
-			switch (json.type) {
-				case "register": onRegister(connection, json);
-					break;
-			}
-		}
-	});
+wsServer.on("request", function(request) {
+    var url = request.httpRequest.url;
+    console.log("Websocket request from : %s", url);
 
-	connection.on('close', function (connection) {
-		removeAll(connection);
-	});
+    if (url.startsWith("/live")) {
+        var connection = request.accept(null, request.origin);
+        var file = url.split("/")[2];
+        var runId = url.split("/")[3];
+
+        fileListeners[runId] = fileListeners[runId] || [];
+        fileListeners[runId].push(connection);
+
+        connection.on("close", function(connection) {
+            removeAll(connection);
+        });
+    } else if (url == "/files") {
+        var connection = request.accept(null, request.origin);
+
+        if (processListeners.indexOf(connection) == -1)
+            processListeners.push(connection);
+
+        connection.on("close", function(connection) {
+            processListeners = processListeners.filter(function(connection2) {
+                return connection2 !== connection;
+            });
+        });
+
+        connection.send(JSON.stringify(files));
+    }
 });
 
-module.exports.onReceiveFile = function (filename, content) {
-	if(fileListeners[filename]){
-		// console.log(fileListeners[filename]);
-		fileListeners[filename].forEach(function(connection) {
-			console.log("Sent")
-			connection.send(JSON.stringify(content));
-		});
-	}
-}
+module.exports.onReceiveFile = function(filename, runId, content) {
+    files[filename] = files[filename] || {};
+    if (!files[filename][runId]) {
+        // New run found
+        files[filename][runId] = {
+			file: filename,
+			runId: runId,
+            source: content.source,
+            running: true,
+            lastPacketTime: Date.now()
+        };
 
-module.exports.init = function(store) {
+        var runPoller = setInterval(function() {
+            // console.log((Date.now() - files[filename][runId].lastPacketTime));
+            if (Date.now() - files[filename][runId].lastPacketTime > 1000) {
+                files[filename][runId].running = false;
+                clearInterval(runPoller);
+                sendProcessList();
+            }
+        }, 1000);
 
-}
+        sendProcessList();
+    } else {
+        files[filename][runId].lastPacketTime = Date.now();
+        if (!files[filename][runId].running) {
+            files[filename][runId].running = true;
+            var runPoller = setInterval(function() {
+                // console.log((Date.now() - files[filename][runId].lastPacketTime));
+                if (Date.now() - files[filename][runId].lastPacketTime > 1000) {
+                    files[filename][runId].running = false;
+                    clearInterval(runPoller);
+                    sendProcessList();
+                }
+            }, 1000);
+        }
+    }
+
+    if (fileListeners[runId]) {
+        fileListeners[runId].forEach(function(connection) {
+            connection.send(JSON.stringify(content));
+        });
+    }
+};
+
+module.exports.init = function(store) {};

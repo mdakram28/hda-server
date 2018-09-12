@@ -1,0 +1,193 @@
+        -:    0:Source:/media/mdakram28/Data/projects/hda/hda-server/hda/logger.h
+        -:    0:Graph:fib.gcno
+        -:    0:Data:fib.gcda
+        -:    0:Runs:0
+        -:    0:Programs:1
+        -:    1:#include <stdio.h>
+        -:    2:#include <stdlib.h>
+        -:    3:#include <signal.h>
+        -:    4:#include <sys/types.h>
+        -:    5:#include <unistd.h>
+        -:    6:#include <sys/time.h>
+        -:    7:#include <pthread.h>
+        -:    8:#include <netdb.h>
+        -:    9:#include <sys/socket.h>
+        -:   10:#include <netinet/in.h>
+        -:   11:#include <errno.h>
+        -:   12:#include <sys/uio.h>
+        -:   13:#include <string.h>
+        -:   14:#include <stdarg.h>
+        -:   15:#include <dirent.h>
+        -:   16:#include <sys/resource.h>
+        -:   17:#include <math.h>
+        -:   18:
+        -:   19:#define PACKET_SEND_DELAY 100000
+        -:   20:#define GCDA_START_OFFSET 100
+        -:   21:#define PACKET_INFO_START 40
+        -:   22:
+        -:   23:void __gcov_flush(void);
+        -:   24:
+        -:   25:clock_t start, stop;
+        -:   26:int fd;
+        -:   27:struct addrinfo *res = 0;
+        -:   28:char buffer[10000];
+        -:   29:FILE *fptr;
+        -:   30:struct rusage r_usage;
+        -:   31:char *gcda_filename;
+        -:   32:pthread_mutex_t packet_mutex;
+        -:   33:
+     1340:   34:void run_coverage()
+        -:   35:{
+     1340:   36:	__gcov_flush();
+     1341:   37:}
+        -:   38:
+    #####:   39:long long current_time_millis()
+        -:   40:{
+        -:   41:	struct timespec spec;
+    #####:   42:	clock_gettime(CLOCK_REALTIME, &spec);
+    #####:   43:	return (spec.tv_nsec / 1.0e6) + ((long long)spec.tv_sec) * 1000;
+        -:   44:}
+        -:   45:
+    #####:   46:void setup_udp()
+        -:   47:{
+    #####:   48:	const char *hostname = HOST; /* localhost */
+    #####:   49:	const char *portname = "5000";
+        -:   50:	struct addrinfo hints;
+    #####:   51:	memset(&hints, 0, sizeof(hints));
+    #####:   52:	hints.ai_family = AF_UNSPEC;
+    #####:   53:	hints.ai_socktype = SOCK_DGRAM;
+    #####:   54:	hints.ai_protocol = 0;
+    #####:   55:	hints.ai_flags = AI_ADDRCONFIG;
+    #####:   56:	int err = getaddrinfo(hostname, portname, &hints, &res);
+    #####:   57:	if (err != 0)
+        -:   58:	{
+    #####:   59:		fprintf(stderr, "failed to resolve remote socket address (err=%d)", err);
+        -:   60:	}
+        -:   61:
+    #####:   62:	fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    #####:   63:	if (fd == -1)
+        -:   64:	{
+    #####:   65:		fprintf(stderr, "%s", strerror(errno));
+        -:   66:	}
+    #####:   67:}
+        -:   68:
+    #####:   69:void delete_file(char *fileName)
+        -:   70:{
+        -:   71:	int status;
+    #####:   72:	status = remove(fileName);
+        -:   73:
+    #####:   74:	if (status != 0)
+        -:   75:	{
+    #####:   76:		printf("Unable to delete the file\n");
+    #####:   77:		perror("Error");
+        -:   78:	}
+    #####:   79:}
+        -:   80:
+    #####:   81:void delete_gcda_files()
+        -:   82:{
+        -:   83:	struct dirent *de;
+    #####:   84:	DIR *dir = opendir(".");
+    #####:   85:	while ((de = readdir(dir)) != NULL)
+        -:   86:	{
+    #####:   87:		char *dot = strrchr(de->d_name, '.');
+    #####:   88:		if (dot && !strcmp(dot, ".gcda"))
+        -:   89:		{
+    #####:   90:			delete_file(de->d_name);
+        -:   91:		}
+        -:   92:	}
+        -:   93:	// printf("sadsadsa------------d");;
+    #####:   94:	closedir(dir);
+    #####:   95:}
+        -:   96:
+    #####:   97:char *get_gcda_filename()
+        -:   98:{
+        -:   99:	struct dirent *de;
+    #####:  100:	DIR *dir = opendir(".");
+    #####:  101:	while ((de = readdir(dir)) != NULL)
+        -:  102:	{
+    #####:  103:		char *dot = strrchr(de->d_name, '.');
+    #####:  104:		if (dot && !strcmp(dot, ".gcda"))
+        -:  105:		{
+    #####:  106:			return de->d_name;
+        -:  107:		}
+        -:  108:	}
+    #####:  109:	closedir(dir);
+    #####:  110:	return 0;
+        -:  111:}
+        -:  112:
+     1341:  113:void put_resource_stats_in_packet()
+        -:  114:{
+     1341:  115:	getrusage(RUSAGE_SELF, &r_usage);
+     1341:  116:	sprintf(buffer + PACKET_INFO_START, "%ld;", r_usage.ru_maxrss);
+     1341:  117:}
+        -:  118:
+    #####:  119:void put_process_info_in_packet()
+        -:  120:{
+        -:  121:	// sprintf(buffer, "%s%ll%d", gcda_filename, current_time_millis, getpid());
+    #####:  122:	sprintf(buffer, "%s;%lld;%d;", gcda_filename, current_time_millis(), getpid());
+    #####:  123:}
+        -:  124:
+     1340:  125:void send_coverage_packet()
+        -:  126:{
+     1340:  127:	pthread_mutex_lock(&packet_mutex);
+        -:  128:	int size;
+     1340:  129:	run_coverage();
+     1341:  130:	put_resource_stats_in_packet();
+     1341:  131:	fptr = fopen(gcda_filename, "r");
+     1341:  132:	if (fptr == NULL)
+        -:  133:	{
+    #####:  134:		printf("Cannot read data \n");
+    #####:  135:		exit(0);
+        -:  136:	}
+     1341:  137:	size = fread(buffer + GCDA_START_OFFSET, sizeof(buffer) - GCDA_START_OFFSET, 1, fptr);
+     1341:  138:	fseek(fptr, 0L, SEEK_END);
+     1341:  139:	size = ftell(fptr);
+     1341:  140:	if (sendto(fd, buffer, size + GCDA_START_OFFSET, 0, res->ai_addr, res->ai_addrlen) == -1)
+        -:  141:	{
+    #####:  142:		fprintf(stderr, "%s", strerror(errno));
+        -:  143:	}
+     1341:  144:	fclose(fptr);
+     1341:  145:	pthread_mutex_unlock(&packet_mutex);
+     1341:  146:}
+        -:  147:
+    #####:  148:void *probe_thread(void *vargp)
+        -:  149:{
+    #####:  150:	delete_gcda_files();
+    #####:  151:	run_coverage();
+    #####:  152:	gcda_filename = get_gcda_filename();
+    #####:  153:	put_process_info_in_packet();
+    #####:  154:	setup_udp();
+        -:  155:	while (1)
+        -:  156:	{
+     2680:  157:		start = clock();
+     1340:  158:		send_coverage_packet();
+     1341:  159:		stop = clock();
+     1341:  160:		usleep(PACKET_SEND_DELAY);
+        -:  161:	}
+        -:  162:}
+        -:  163:
+        1:  164:void sig_handler(int sig)
+        -:  165:{
+        1:  166:	exit(0);
+        -:  167:}
+        -:  168:
+    #####:  169:void exit_handler()
+        -:  170:{
+    #####:  171:	send_coverage_packet();
+    #####:  172:	delete_file(gcda_filename);
+    #####:  173:}
+        -:  174:
+    #####:  175:void __attribute__((constructor)) setup()
+        -:  176:{
+        -:  177:	pthread_t thread_id;
+    #####:  178:	setbuf(stdout, NULL);
+    #####:  179:	signal(SIGTERM, sig_handler);
+    #####:  180:	signal(SIGABRT, sig_handler);
+    #####:  181:	signal(SIGINT, sig_handler);
+    #####:  182:	signal(SIGQUIT, sig_handler);
+    #####:  183:	signal(SIGKILL, sig_handler);
+    #####:  184:	signal(SIGSTOP, sig_handler);
+    #####:  185:	atexit(exit_handler);
+    #####:  186:	pthread_create(&thread_id, NULL, probe_thread, NULL);
+        -:  187:	// printf("Probe setup complete for %s\n", __FILE__);
+    #####:  188:}

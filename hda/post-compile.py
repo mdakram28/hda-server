@@ -10,4 +10,4 @@ fileName = targetFile;
 if targetFile.index('/') >= 0:
 	fileName = targetFile[targetFile.index('/')+1:]
 
-subprocess.call(['scp', targetFile, "pi@192.168.43.249:/home/pi/target/"+fileName]
+# subprocess.call(['scp', targetFile, "pi@192.168.43.249:/home/pi/target/"+fileName]

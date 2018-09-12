@@ -4,7 +4,8 @@ var fs = require('fs');
 var exec = require('child_process').exec;
 var path = require('path');
 
-var sourceFiles = {};
+const GCDA_START_OFFSET = 100;
+const PACKET_INFO_START = 40;
 
 // --------------------creating a udp server --------------------
 
@@ -51,27 +52,37 @@ module.exports = function (onReceiveFile, store) {
 	var i = 0;
 	// var memBuf = new Buffer();
 	// emits on new datagram msg
+	var process_info_buffer = new Buffer(PACKET_INFO_START);
+	var packet_info_buffer = new Buffer(GCDA_START_OFFSET - PACKET_INFO_START);
 	server.on('message', function (msg, info) {
-		var tokens = msg.toString().split("\n");
-		// console.log(tokens);
-		var fileName = tokens[0];
-		var file = new Buffer(msg.length - 40);
-		msg.copy(file, 0, 40);
-		var sourceDir = getSourceFolder(store.sources, fileName);
-		console.log(sourceDir);
 		var timeReceived = new Date().getTime();
-		// console.log(msg.toString().substring(20, 50));
-		var memoryUsage = parseInt(msg.toString().substring(20).split("\n")[0]);
-		// console.log(sourceDir);
-		// console.log("File size: "+file.length +"/"+msg.length);
-		// console.log(JSON.stringify(fileName));
-		// msg = msg.toString().replace(/\n*\u0000*$/, "");
-		// fs.writeFile(, file,)
+		
+		// get process stats
+		msg.copy(process_info_buffer, 0, 0);
+		var process_stats_tokens = process_info_buffer.toString().split(";");
+		var fileName = process_stats_tokens[0];
+		var startTime = process_stats_tokens[1];
+		var processId = process_stats_tokens[2];
+		var sourceDir = getSourceFolder(store.sources, fileName);
+		var runId = sourceDir.file+"-"+startTime+"-"+processId;
+		if(!sourceDir) {
+			console.log("Received packet from unknown source : "+ fileName);
+			return;
+		}
+
+		// get resource stats
+		msg.copy(packet_info_buffer, 0, PACKET_INFO_START);
+		var packet_info_tokens = packet_info_buffer.toString().split(";");
+		var memoryUsage = parseInt(packet_info_tokens[0]);
+
+		// get file
+		var file = new Buffer(msg.length - GCDA_START_OFFSET);
+		msg.copy(file, 0, GCDA_START_OFFSET);
 		var wstream = fs.createWriteStream(path.join(sourceDir.dir , fileName).toString());
 		var covFile = path.join(sourceDir.dir , sourceDir.file + ".gcov").toString();
 		wstream.write(file);
-		// console.log('Data received from client : ' + JSON.stringify(parser.parse_coverage(msg), null, 4));
-		console.log(Math.random() + ' Received %d bytes from %s:%d\n', msg.length, info.address, info.port);
+
+		console.log(' Received %d bytes from %s:%d %s\n', msg.length, info.address, info.port, runId);
 		wstream.end();
 		exec("cd " + sourceDir.dir + "; rm *.gcov; gcov "+sourceDir.file+" -m;", function (error, stdout, stderr) {
 			// console.log(error);
@@ -80,13 +91,17 @@ module.exports = function (onReceiveFile, store) {
 			fs.readFile(covFile, function (err, data) {
 				if (err) console.log(err);
 				else {
-					sourceFiles[fileName] = parser.parse_coverage(data.toString());
-					sourceFiles[fileName].time = timeReceived;
-					sourceFiles[fileName].memory = memoryUsage;
-					sourceFiles[fileName].progress = getProgress(stdout);
-					onReceiveFile(sourceDir.file, sourceFiles[fileName]);
+					var content = parser.parse_coverage(data.toString());
+					content.time = timeReceived;
+					content.memory = memoryUsage;
+					content.progress = getProgress(stdout);
+					content.runId = runId;
+					content.startTime = startTime;
+					content.source = sourceDir.dir;
+					onReceiveFile(sourceDir.file, runId, content);
 					store.timeline[sourceDir.file] = store.timeline[sourceDir.file] || {};
-					store.timeline[sourceDir.file][timeReceived] = sourceFiles[fileName];
+					store.timeline[sourceDir.file][runId] = store.timeline[sourceDir.file][runId] || {};
+					store.timeline[sourceDir.file][runId][timeReceived] = content;
 				}
 			});
 		});
